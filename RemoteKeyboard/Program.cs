@@ -60,7 +60,7 @@ namespace RemoteKeyboardServer
         /// <param name="Keys"></param>
         public static void SendKeyboardString(string Keys)
         {
-            SendKeyboardString(Keys, KeyStateFlags.Down, IntPtr.Zero);
+            SendKeyboardString(Keys, KeyStateFlags.Down, 0xFFFFFFFF);
         }
 
         /// <summary>
@@ -70,7 +70,7 @@ namespace RemoteKeyboardServer
         /// <param name="Flags"></param>
         public static void SendKeyboardString(string Keys, KeyStateFlags Flags)
         {
-            SendKeyboardString(Keys, Flags, IntPtr.Zero);
+            SendKeyboardString(Keys, Flags, 0xFFFFFFFF);
         }
 
         /// <summary>
@@ -79,7 +79,7 @@ namespace RemoteKeyboardServer
         /// <param name="Keys"></param>
         /// <param name="Flags"></param>
         /// <param name="hWnd"></param>
-        public static void SendKeyboardString(string Keys, KeyStateFlags Flags, IntPtr hWnd)
+        public static void SendKeyboardString(string Keys, KeyStateFlags Flags, uint hWnd)
         {
             uint[] keys = new uint[Keys.Length];
             KeyStateFlags[] states = new KeyStateFlags[Keys.Length];
@@ -122,7 +122,7 @@ namespace RemoteKeyboardServer
         private static extern void keybd_eventEx(byte bVk, byte bScan, int dwFlags, int guidPDD);
 
         [DllImport("coredll", SetLastError = true)]
-        internal static extern bool PostKeybdMessage(IntPtr hwnd, uint vKey, KeyStateFlags flags, uint cCharacters, KeyStateFlags[] pShiftStateBuffer, uint[] pCharacterBuffer);
+        private static extern bool PostKeybdMessage(uint hwnd, uint vKey, KeyStateFlags flags, uint cCharacters, KeyStateFlags[] pShiftStateBuffer, uint[] pCharacterBuffer);
     }
     #region KeyStateFlags
     /// <summary>

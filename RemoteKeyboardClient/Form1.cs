@@ -29,7 +29,14 @@ namespace RemoteKeyboardClient
         {
             if (client != null)
             {
-                client.GetStream().WriteByte(ConvertHexStringToByteArray(keycodeBox.Text)[0]);
+                try
+                {
+                    client.GetStream().WriteByte(ConvertHexStringToByteArray(keycodeBox.Text)[0]);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(ex.Message);
+                }
             }
         }
         public static byte[] ConvertHexStringToByteArray(string hexString)
