@@ -11,7 +11,7 @@ namespace RemoteKeyboardServer
 {
     class Program
     {
-        public static bool byteMode = true; //Change this manually to change the mode
+        public static bool byteMode = false; //Change this manually to change the mode
         static void Main(string[] args)
         {
             Debug.WriteLine("Starting listener");
@@ -43,7 +43,7 @@ namespace RemoteKeyboardServer
                         else
                         {
                             string currentLine = streamReader.ReadLine();
-                            Debug.WriteLine(currentLine);
+                            Debug.WriteLine("Got Line " + currentLine);
                             SystemCalls.SendKeyboardString(currentLine);
                         }
                     }
@@ -91,8 +91,14 @@ namespace RemoteKeyboardServer
                 keys[k] = Convert.ToUInt32(Keys[k]);
             }
 
-            PostKeybdMessageEx(hWnd, 0, Flags, (uint)keys.Length, states, keys, 0);
-            PostKeybdMessageEx(hWnd, 0, dead[0], 1, dead, keys, 0);
+            if (!PostKeybdMessage(hWnd, 0, Flags, (uint)keys.Length, states, keys))
+            {
+                Debug.WriteLine(Marshal.GetLastWin32Error());
+            }
+            if (!PostKeybdMessage(hWnd, 0, dead[0], 1, dead, keys))
+            {
+                Debug.WriteLine(Marshal.GetLastWin32Error());
+            }
         }
 
         /// <summary>
@@ -115,8 +121,8 @@ namespace RemoteKeyboardServer
         [DllImport("coredll", SetLastError = true)]
         private static extern void keybd_eventEx(byte bVk, byte bScan, int dwFlags, int guidPDD);
 
-        [DllImport("coredll.dll", EntryPoint = "PostKeybdMessage", SetLastError = true)]
-        internal static extern bool PostKeybdMessageEx(IntPtr hwnd, uint vKey, KeyStateFlags flags, uint cCharacters, KeyStateFlags[] pShiftStateBuffer, uint[] pCharacterBuffer, int guidPDD);
+        [DllImport("coredll", SetLastError = true)]
+        internal static extern bool PostKeybdMessage(IntPtr hwnd, uint vKey, KeyStateFlags flags, uint cCharacters, KeyStateFlags[] pShiftStateBuffer, uint[] pCharacterBuffer);
     }
     #region KeyStateFlags
     /// <summary>
