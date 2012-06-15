@@ -11,30 +11,41 @@ namespace RemoteKeyboardServer
 {
     class Program
     {
+        public static bool byteMode = true; //Change this manually to change the mode
         static void Main(string[] args)
         {
             Debug.WriteLine("Starting listener");
             //Tried to make toasts work, but they need a proper appid and I don't know what an appid would look like as an int32.
-            ShellToast st = new ShellToast();
-            st.Title = "Remote Keyboard";
-            st.Content = "Starting listener";
-            st.Show();
+            //ShellToast st = new ShellToast();
+            //st.Title = "Remote Keyboard";
+            //st.Content = "Starting listener";
+            //st.Show();
             var tcpListener = new TcpListener(IPAddress.Any, 23);
             tcpListener.Start();
-            Debug.WriteLine("Modifying registry");
+            //Debug.WriteLine("Modifying registry");
             //return IsRegistryKeyBitSet(HKey.LOCAL_MACHINE, @"Hardware\DeviceMap\Keybd", "Status", 0x80);
-            Registry.LocalMachine.SetValue(@"Hardware\DeviceMap\Keybd\Status", 0x80);
+            //Registry.LocalMachine.SetValue(@"Hardware\DeviceMap\Keybd\Status", 0x80);
             Debug.WriteLine("Starting loop");
             while (true)
             {
                 var tcpClient = tcpListener.AcceptTcpClient();
-                var clientStream = tcpClient.GetStream();
-                while(true){
-                    if (clientStream.DataAvailable)
+                using (var stream = tcpClient.GetStream())
+                using (var streamReader = new StreamReader(stream))
+                {
+                    while (!streamReader.EndOfStream)
                     {
-                        int key = clientStream.ReadByte();
-                        Debug.WriteLine(key);
-                        SystemCalls.SendKey((byte)key);
+                        if (byteMode)
+                        {
+                            int b = streamReader.BaseStream.ReadByte();
+                            Debug.WriteLine("Got key " + b);
+                            SystemCalls.SendKeyboardKey((byte)b);
+                        }
+                        else
+                        {
+                            string currentLine = streamReader.ReadLine();
+                            Debug.WriteLine(currentLine);
+                            SystemCalls.SendKeyboardString(currentLine);
+                        }
                     }
                 }
             }
@@ -42,46 +53,98 @@ namespace RemoteKeyboardServer
     };
     public class SystemCalls
     {
-        //See more at http://msdn2.microsoft.com/en-us/library/ms927178.aspx
-        //http://msdn.microsoft.com/en-us/library/bb431750.aspx
-        public const byte VK_NONAME = 0xFC;  // Do nothing
-        public const byte VK_ESC = 0x1B;  // Smartphone back-button
-        public const byte VK_F4 = 0x73;  // Home Screen
-        public const byte VK_APP6 = 0xC6;  // Lock the keys on Smartphone
-        public const byte VK_F22 = 0x85;  // Lock the keys on PocketPC (VK_KEYLOCK)
-        public const byte VK_F16 = 0x7F;  // Toggle Speakerphone
-        public const byte VK_OFF = 0xDF;  // Power button
-
+        #region ----------------- Keyboard functions ------------------
         /// <summary>
-        /// Puts `key` into to global keyboard buffer
+        /// Send a string to the keyboard
         /// </summary>
-        /// <param name="key"></param>
-        public static void SendKey(byte key)
+        /// <param name="Keys"></param>
+        public static void SendKeyboardString(string Keys)
         {
-            const int KEYEVENTF_KEYUP = 0x02;
-            const int KEYEVENTF_KEYDOWN = 0x00;
-            try
-            {
-                keybd_eventEx(key, 0, KEYEVENTF_KEYDOWN, 0);
-                keybd_eventEx(key, 0, KEYEVENTF_KEYUP, 0);
-            }
-            catch (Exception ex)
-            {
-                StringBuilder sb = new StringBuilder();
-                sb.AppendLine(ex.Message);
-                sb.AppendLine(ex.StackTrace);
-                sb.AppendLine(ex.ToString());
-                Debug.Write(sb.ToString());
-                using (StreamWriter outfile =
-    new StreamWriter(@"\Program Files\sharks.txt"))
-                {
-                    outfile.Write(sb.ToString());
-                    outfile.Close();
-                }
-            }
+            SendKeyboardString(Keys, KeyStateFlags.Down, IntPtr.Zero);
         }
 
+        /// <summary>
+        /// Send a string to the keyboard
+        /// </summary>
+        /// <param name="Keys"></param>
+        /// <param name="Flags"></param>
+        public static void SendKeyboardString(string Keys, KeyStateFlags Flags)
+        {
+            SendKeyboardString(Keys, Flags, IntPtr.Zero);
+        }
+
+        /// <summary>
+        /// Send a string to the keyboard
+        /// </summary>
+        /// <param name="Keys"></param>
+        /// <param name="Flags"></param>
+        /// <param name="hWnd"></param>
+        public static void SendKeyboardString(string Keys, KeyStateFlags Flags, IntPtr hWnd)
+        {
+            uint[] keys = new uint[Keys.Length];
+            KeyStateFlags[] states = new KeyStateFlags[Keys.Length];
+            KeyStateFlags[] dead = { KeyStateFlags.Dead };
+
+            for (int k = 0; k < Keys.Length; k++)
+            {
+                states[k] = Flags;
+                keys[k] = Convert.ToUInt32(Keys[k]);
+            }
+
+            PostKeybdMessageEx(hWnd, 0, Flags, (uint)keys.Length, states, keys, 0);
+            PostKeybdMessageEx(hWnd, 0, dead[0], 1, dead, keys, 0);
+        }
+
+        /// <summary>
+        /// Send a key to the keyboard
+        /// </summary>
+        /// <param name="VirtualKey"></param>
+        public static void SendKeyboardKey(byte VirtualKey)
+        {
+
+            keybd_eventEx(VirtualKey, 0, 0, 0);
+            keybd_eventEx(VirtualKey, 0, (int)KeyEvents.KeyUp, 0);
+        }
+        private enum KeyEvents
+        {
+            ExtendedKey = 0x0001,
+            KeyUp = 0x0002,
+            Silent = 0x0004
+        }
+        #endregion
         [DllImport("coredll", SetLastError = true)]
         private static extern void keybd_eventEx(byte bVk, byte bScan, int dwFlags, int guidPDD);
+
+        [DllImport("coredll.dll", EntryPoint = "PostKeybdMessage", SetLastError = true)]
+        internal static extern bool PostKeybdMessageEx(IntPtr hwnd, uint vKey, KeyStateFlags flags, uint cCharacters, KeyStateFlags[] pShiftStateBuffer, uint[] pCharacterBuffer, int guidPDD);
     }
+    #region KeyStateFlags
+    /// <summary>
+    /// KeyStateFlags for Keyboard methods
+    /// </summary>
+    [Flags()]
+    public enum KeyStateFlags : int
+    {
+        Toggled = 0x0001,		//	 is toggled.
+        AsyncDown = 0x0002,		//	 went down since last GetAsync call.
+        PrevDown = 0x0040,		//	 was previously down.
+        Down = 0x0080,		//	 is currently down.
+        AnyCtrl = 0x40000000,	//  L or R control is down.
+        AnyShift = 0x20000000,	//  L or R shift is down.
+        AnyAlt = 0x10000000,	//  L or R alt is down.
+        Capital = 0x08000000,	//  VK_CAPITAL is toggled.
+        LeftCtrl = 0x04000000,	//  L control is down.
+        LeftShift = 0x02000000,	//  L shift is down.
+        LeftAlt = 0x01000000,	//  L alt is down.
+        LeftWin = 0x00800000,	//  L Win  is down.
+        RightCtrl = 0x00400000,	//  R control is down.
+        RightShift = 0x00200000,	//  R shift is down.
+        RightAlt = 0x00100000,	//  R alt is down.
+        RightWin = 0x00080000,	//  R Win  is down.
+        Dead = 0x00020000,	//  Corresponding char is dead char.
+        NoCharacter = 0x00010000,	//  No corresponding char.
+        Language1 = 0x00008000,	//  Use for language specific shifts.
+        NumLock = 0x00001000	//  NumLock toggled state.
+    }
+    #endregion
 }
